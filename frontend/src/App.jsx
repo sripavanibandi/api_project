@@ -243,14 +243,14 @@ function App({ onLogout, currentUser }) {
   }
 
   // Filter & Search Logic
-  const categories = ["All", "Computing", "Mobile", "Audio", "Wearables", "Tablets"];
+  const categories = ["All", "Electronics", "Fashion", "Groceries", "Home & Living", "Lifestyle"];
 
   const filteredProducts = products
     .filter((product) => {
       const matchesSearch =
         product.name.toLowerCase().includes(search.toLowerCase()) ||
         product.description?.toLowerCase().includes(search.toLowerCase());
-      const cat = getProductCategory(product.name);
+      const cat = getProductCategory(product.name, product.description);
       const matchesCategory = selectedCategory === "All" || cat === selectedCategory;
       return matchesSearch && matchesCategory;
     })
@@ -315,7 +315,7 @@ function App({ onLogout, currentUser }) {
             </div>
             <div className="brand-text">
               <span className="brand-title">ShopEase</span>
-              <span className="brand-tagline">Enterprise Hardware</span>
+              <span className="brand-tagline">Department Store</span>
             </div>
           </div>
 
@@ -327,7 +327,7 @@ function App({ onLogout, currentUser }) {
                 setSelectedOrder(null);
               }}
             >
-              Hardware Catalog
+              Store Catalog
             </button>
 
             <button
@@ -380,12 +380,12 @@ function App({ onLogout, currentUser }) {
               <div className="hero-content">
                 <div className="hero-badge">
                   <ShieldCheckIcon size={14} />
-                  <span>Certified Enterprise Equipment • Direct Inventory</span>
+                  <span>Curated Marketplace • Daily Groceries, Fashion, Tech & Home</span>
                 </div>
-                <h1>Precision Hardware & Electronics</h1>
+                <h1>Everything You Need, Delivered.</h1>
                 <p>
-                  Industrial-grade computing, smart communication, and verified peripherals with
-                  transparent inventory and immediate dispatch.
+                  Discover fresh groceries, timeless apparel, everyday home essentials, and modern electronics.
+                  Quality-inspected with transparent pricing and express doorstep delivery.
                 </p>
               </div>
 
@@ -393,17 +393,17 @@ function App({ onLogout, currentUser }) {
               <div className="hero-metrics">
                 <div className="metric-box">
                   <span className="metric-num">{products.length}</span>
-                  <span className="metric-label">In-Stock Models</span>
+                  <span className="metric-label">Curated Items</span>
                 </div>
                 <div className="metric-divider"></div>
                 <div className="metric-box">
-                  <span className="metric-num">100%</span>
-                  <span className="metric-label">OEM Guaranteed</span>
+                  <span className="metric-num">Multi</span>
+                  <span className="metric-label">Departments</span>
                 </div>
                 <div className="metric-divider"></div>
                 <div className="metric-box">
-                  <span className="metric-num">0%</span>
-                  <span className="metric-label">Fulfillment Delay</span>
+                  <span className="metric-num">Express</span>
+                  <span className="metric-label">Fulfillment</span>
                 </div>
               </div>
             </section>
@@ -432,7 +432,7 @@ function App({ onLogout, currentUser }) {
                   <SearchIcon size={16} className="search-svg" />
                   <input
                     type="text"
-                    placeholder="Search specifications, model, name..."
+                    placeholder="Search fashion, groceries, electronics, home..."
                     value={search}
                     onChange={(e) => {
                       setSearch(e.target.value);
@@ -466,12 +466,12 @@ function App({ onLogout, currentUser }) {
             {loading ? (
               <div className="loading-state-container">
                 <div className="ui-spinner"></div>
-                <p>Loading enterprise catalog...</p>
+                <p>Loading department catalog...</p>
               </div>
             ) : currentProducts.length === 0 ? (
               <div className="empty-catalog-state">
                 <AlertCircleIcon size={36} />
-                <h3>No Matching Equipment Found</h3>
+                <h3>No Matching Products Found</h3>
                 <p>Try adjusting your search query or switching categories.</p>
                 <button
                   className="reset-filters-btn"
@@ -487,7 +487,7 @@ function App({ onLogout, currentUser }) {
               <>
                 <div className="bento-product-grid">
                   {currentProducts.map((product) => {
-                    const category = getProductCategory(product.name);
+                    const category = getProductCategory(product.name, product.description);
                     const isAvailable = product.quantity > 0;
                     const selectedQty = productQuantities[product.id] || 1;
 
@@ -515,7 +515,7 @@ function App({ onLogout, currentUser }) {
                             </span>
                           </div>
 
-                          <ProductVisual productName={product.name} />
+                          <ProductVisual productName={product.name} productDesc={product.description} />
                         </div>
 
                         {/* Card Content */}
@@ -653,7 +653,7 @@ function App({ onLogout, currentUser }) {
                     <div className="cart-row-card" key={item.id}>
                       <div className="item-info-group">
                         <div className="item-mini-visual">
-                          <ProductVisual productName={item.name} />
+                          <ProductVisual productName={item.name} productDesc={item.description || ""} />
                         </div>
                         <div>
                           <h4 className="item-name">{item.name}</h4>
