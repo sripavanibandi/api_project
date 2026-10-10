@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-
+import React, { useEffect, useState } from "react";
 import {
   getProducts,
   createOrder,
@@ -11,10 +10,25 @@ import {
   updateOrderItemQuantity,
   generateInvoice
 } from "./services/api";
-
+import {
+  CartIcon,
+  OrdersIcon,
+  SearchIcon,
+  UserIcon,
+  LogoutIcon,
+  TrashIcon,
+  CheckCircleIcon,
+  AlertCircleIcon,
+  PlusIcon,
+  MinusIcon,
+  PrinterIcon,
+  ShieldCheckIcon,
+  ArrowLeftIcon
+} from "./components/Icons";
+import { ProductVisual, getProductCategory } from "./components/ProductVisual";
 import "./App.css";
 
-function App() {
+function App({ onLogout, currentUser }) {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [productQuantities, setProductQuantities] = useState({});
@@ -28,22 +42,21 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [error, setError] = useState("");
-  const [orderSuccess, setOrderSuccess] = useState("");
+  const [notification, setNotification] = useState("");
 
   const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const [sortOrder, setSortOrder] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [showCart, setShowCart] = useState(false);
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [showOrders, setShowOrders] = useState(false);
-
-  const loggedInUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const customerName = loggedInUser.name || "";
-  const customerEmail = loggedInUser.email || "";
+  const [view, setView] = useState("catalog"); // 'catalog' | 'cart' | 'checkout' | 'orders' | 'order-detail'
   const [placingOrder, setPlacingOrder] = useState(false);
 
-  const productsPerPage = 3;
+  const loggedInUser = currentUser || JSON.parse(localStorage.getItem("user") || "{}");
+  const customerName = loggedInUser.name || "Customer";
+  const customerEmail = loggedInUser.email || "";
+
+  const productsPerPage = 6;
 
   useEffect(() => {
     loadProducts();
@@ -53,14 +66,10 @@ function App() {
     try {
       setLoading(true);
       const data = await getProducts();
-
-      const productList = Array.isArray(data)
-        ? data
-        : data.content || [];
-
+      const productList = Array.isArray(data) ? data : data.content || [];
       setProducts(productList);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to load products");
     } finally {
       setLoading(false);
     }
@@ -70,69 +79,41 @@ function App() {
     try {
       setOrdersLoading(true);
       setError("");
-
       const data = await getOrders();
-
-      setOrders(
-        Array.isArray(data)
-          ? data
-          : data.content || []
-      );
+      setOrders(Array.isArray(data) ? data : data.content || []);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to load orders");
     } finally {
       setOrdersLoading(false);
     }
   }
 
-  async function viewOrder(orderId) {
+  async function viewOrderDetail(orderId) {
     try {
       setError("");
-
       const order = await getOrder(orderId);
       const items = await getOrderItems(orderId);
-
       setSelectedOrder(order);
-      setOrderItems(
-        Array.isArray(items)
-          ? items
-          : items.content || []
-      );
+      setOrderItems(Array.isArray(items) ? items : items.content || []);
+      setInvoice(null);
+      setView("order-detail");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to load order details");
     }
   }
 
   async function updateItemQuantity(itemId, quantity) {
-    if (quantity < 1) {
-      return;
-    }
-
+    if (quantity < 1) return;
     try {
       setError("");
-
-      await updateOrderItemQuantity(
-        itemId,
-        quantity
-      );
-
-      const items = await getOrderItems(
-        selectedOrder.id
-      );
-
-      setOrderItems(
-        Array.isArray(items)
-          ? items
-          : items.content || []
-      );
-
-      const updatedOrder = await getOrder(
-        selectedOrder.id
-      );
-
+      await updateOrderItemQuantity(itemId, quantity);
+      const items = await getOrderItems(selectedOrder.id);
+      setOrderItems(Array.isArray(items) ? items : items.content || []);
+      const updatedOrder = await getOrder(selectedOrder.id);
       setSelectedOrder(updatedOrder);
+      setNotification("Item quantity updated successfully.");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Could not update quantity.");
     }
   }
 
@@ -140,190 +121,104 @@ function App() {
     try {
       setInvoiceLoading(true);
       setError("");
-      setInvoice(null);
-
       const data = await generateInvoice(orderId);
-
       setInvoice(data);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to generate invoice");
     } finally {
       setInvoiceLoading(false);
     }
   }
 
   async function handleCancelOrder(orderId) {
-    if (
-      !window.confirm(
-        "Are you sure you want to cancel this order?"
-      )
-    ) {
+    if (!window.confirm(`Are you sure you want to cancel Order #${orderId}?`)) {
       return;
     }
-
     try {
       setError("");
-
       await cancelOrder(orderId);
-
-      setOrderSuccess(
-        `Order ${orderId} cancelled successfully.`
-      );
-
+      setNotification(`Order #${orderId} was cancelled.`);
       await loadOrders();
-
       if (selectedOrder?.id === orderId) {
         const updatedOrder = await getOrder(orderId);
         setSelectedOrder(updatedOrder);
       }
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Could not cancel order.");
     }
   }
 
   function increaseProductQuantity(product) {
-  setProductQuantities((current) => {
-    const currentQuantity =
-      current[product.id] || 1;
+    setProductQuantities((current) => {
+      const currentQty = current[product.id] || 1;
+      if (currentQty >= product.quantity) return current;
+      return { ...current, [product.id]: currentQty + 1 };
+    });
+  }
 
-    if (currentQuantity >= product.quantity) {
-      return current;
-    }
+  function decreaseProductQuantity(product) {
+    setProductQuantities((current) => {
+      const currentQty = current[product.id] || 1;
+      if (currentQty <= 1) return current;
+      return { ...current, [product.id]: currentQty - 1 };
+    });
+  }
 
-    return {
-      ...current,
-      [product.id]: currentQuantity + 1
-    };
-  });
-}
-
-function decreaseProductQuantity(product) {
-  setProductQuantities((current) => {
-    const currentQuantity =
-      current[product.id] || 1;
-
-    if (currentQuantity <= 1) {
-      return current;
-    }
-
-    return {
-      ...current,
-      [product.id]: currentQuantity - 1
-    };
-  });
-}
-
-
-function addToCart(product) {
-  const selectedQuantity =
-    productQuantities[product.id] || 1;
-
-  setCart((currentCart) => {
-    const existing = currentCart.find(
-      (item) => item.id === product.id
-    );
-
-    if (existing) {
-      const newQuantity =
-        existing.cartQuantity +
-        selectedQuantity;
-
-      if (newQuantity > product.quantity) {
-        return currentCart;
+  function addToCart(product) {
+    const selectedQty = productQuantities[product.id] || 1;
+    setCart((currentCart) => {
+      const existing = currentCart.find((item) => item.id === product.id);
+      if (existing) {
+        const newQty = existing.cartQuantity + selectedQty;
+        if (newQty > product.quantity) return currentCart;
+        return currentCart.map((item) =>
+          item.id === product.id ? { ...item, cartQuantity: newQty } : item
+        );
       }
+      return [...currentCart, { ...product, cartQuantity: selectedQty }];
+    });
 
-      return currentCart.map((item) =>
-        item.id === product.id
-          ? {
-              ...item,
-              cartQuantity: newQuantity
-            }
-          : item
-      );
-    }
+    setProductQuantities((current) => ({
+      ...current,
+      [product.id]: 1
+    }));
 
-    return [
-      ...currentCart,
-      {
-        ...product,
-        cartQuantity: selectedQuantity
-      }
-    ];
-  });
+    setNotification(`Added ${product.name} (${selectedQty}) to cart.`);
+  }
 
-  setProductQuantities((current) => ({
-    ...current,
-    [product.id]: 1
-  }));
-}
-
-  function increaseQuantity(productId) {
+  function increaseCartQty(productId) {
     setCart((currentCart) =>
       currentCart.map((item) => {
         if (item.id === productId) {
-          if (
-            item.cartQuantity >= item.quantity
-          ) {
-            return item;
-          }
-
-          return {
-            ...item,
-            cartQuantity:
-              item.cartQuantity + 1
-          };
+          if (item.cartQuantity >= item.quantity) return item;
+          return { ...item, cartQuantity: item.cartQuantity + 1 };
         }
-
         return item;
       })
     );
   }
 
-  function decreaseQuantity(productId) {
+  function decreaseCartQty(productId) {
     setCart((currentCart) =>
       currentCart
         .map((item) =>
-          item.id === productId
-            ? {
-                ...item,
-                cartQuantity:
-                  item.cartQuantity - 1
-              }
-            : item
+          item.id === productId ? { ...item, cartQuantity: item.cartQuantity - 1 } : item
         )
-        .filter(
-          (item) => item.cartQuantity > 0
-        )
+        .filter((item) => item.cartQuantity > 0)
     );
   }
 
   function removeFromCart(productId) {
-    setCart((currentCart) =>
-      currentCart.filter(
-        (item) => item.id !== productId
-      )
-    );
+    setCart((currentCart) => currentCart.filter((item) => item.id !== productId));
   }
 
-  function openCheckout() {
-    if (cart.length === 0) {
-      alert("Your cart is empty.");
-      return;
-    }
-
-    setShowCart(false);
-    setShowCheckout(true);
-  }
-
-  async function placeOrder() {
+  async function handlePlaceOrder() {
+    if (cart.length === 0) return;
     try {
       setPlacingOrder(true);
       setError("");
 
-      const order = await createOrder(
-        customerName,
-        customerEmail
-      );
+      const order = await createOrder(customerName, customerEmail);
 
       for (const item of cart) {
         await addOrderItem({
@@ -336,737 +231,908 @@ function addToCart(product) {
       }
 
       setCart([]);
-      setShowCheckout(false);
-
-      setOrderSuccess(
-        `Order placed successfully! Order ID: ${order.id}`
-      );
-
+      setNotification(`Order #${order.id} placed successfully!`);
       await loadProducts();
+      await loadOrders();
+      setView("orders");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to place order.");
     } finally {
       setPlacingOrder(false);
     }
   }
 
-  function openOrders() {
-    setShowOrders(true);
-    setShowCart(false);
-    setShowCheckout(false);
-    setSelectedOrder(null);
-    loadOrders();
-  }
+  // Filter & Search Logic
+  const categories = ["All", "Computing", "Mobile", "Audio", "Wearables", "Tablets"];
 
   const filteredProducts = products
-    .filter((product) =>
-      product.name
-        .toLowerCase()
-        .includes(search.toLowerCase())
-    )
+    .filter((product) => {
+      const matchesSearch =
+        product.name.toLowerCase().includes(search.toLowerCase()) ||
+        product.description?.toLowerCase().includes(search.toLowerCase());
+      const cat = getProductCategory(product.name);
+      const matchesCategory = selectedCategory === "All" || cat === selectedCategory;
+      return matchesSearch && matchesCategory;
+    })
     .sort((a, b) => {
-      if (sortOrder === "low") {
-        return a.price - b.price;
-      }
-
-      if (sortOrder === "high") {
-        return b.price - a.price;
-      }
-
+      if (sortOrder === "low") return a.price - b.price;
+      if (sortOrder === "high") return b.price - a.price;
       return 0;
     });
 
-  const totalPages = Math.ceil(
-    filteredProducts.length /
-      productsPerPage
-  );
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  const startIndex = (currentPage - 1) * productsPerPage;
+  const currentProducts = filteredProducts.slice(startIndex, startIndex + productsPerPage);
 
-  const startIndex =
-    (currentPage - 1) * productsPerPage;
+  const cartItemCount = cart.reduce((sum, item) => sum + item.cartQuantity, 0);
+  const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.cartQuantity, 0);
 
-  const currentProducts =
-    filteredProducts.slice(
-      startIndex,
-      startIndex + productsPerPage
-    );
-
-  const cartTotal = cart.reduce(
-    (total, item) =>
-      total +
-      item.price * item.cartQuantity,
-    0
-  );
+  function getUserInitials(name) {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((part) => part[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  }
 
   return (
-    <div className="app-container">
-
-      {/* NAVBAR */}
-
-      <nav className="navbar">
-        <div className="logo">
-          🛍️ ShopEase
+    <div className="store-layout">
+      {/* GLOBAL NOTIFICATION BANNER */}
+      {notification && (
+        <div className="toast-notification success">
+          <CheckCircleIcon size={18} />
+          <span>{notification}</span>
+          <button className="toast-dismiss" onClick={() => setNotification("")}>
+            ✕
+          </button>
         </div>
+      )}
 
-        <div className="nav-buttons">
-          <button
-            className="nav-button"
+      {error && (
+        <div className="toast-notification error">
+          <AlertCircleIcon size={18} />
+          <span>{error}</span>
+          <button className="toast-dismiss" onClick={() => setError("")}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* HEADER NAVBAR */}
+      <header className="store-header">
+        <div className="header-inner">
+          <div
+            className="brand-group"
             onClick={() => {
-              setShowCart(false);
-              setShowCheckout(false);
-              setShowOrders(false);
+              setView("catalog");
               setSelectedOrder(null);
             }}
           >
-            Products
-          </button>
+            <div className="brand-logo-mark">
+              <span>SE</span>
+            </div>
+            <div className="brand-text">
+              <span className="brand-title">ShopEase</span>
+              <span className="brand-tagline">Enterprise Hardware</span>
+            </div>
+          </div>
 
-          <button
-            className="nav-button"
-            onClick={() => setShowCart(true)}
-          >
-            🛒 Cart ({cart.length})
-          </button>
+          <nav className="header-nav">
+            <button
+              className={`nav-link-btn ${view === "catalog" ? "active" : ""}`}
+              onClick={() => {
+                setView("catalog");
+                setSelectedOrder(null);
+              }}
+            >
+              Hardware Catalog
+            </button>
 
-          <button
-            className="nav-button"
-            onClick={openOrders}
-          >
-            My Orders
-          </button>
+            <button
+              className={`nav-link-btn ${view === "orders" || view === "order-detail" ? "active" : ""}`}
+              onClick={() => {
+                setView("orders");
+                setSelectedOrder(null);
+                loadOrders();
+              }}
+            >
+              <OrdersIcon size={17} />
+              <span>Orders</span>
+            </button>
+
+            <button
+              className={`cart-trigger-btn ${view === "cart" || view === "checkout" ? "active" : ""}`}
+              onClick={() => setView("cart")}
+            >
+              <CartIcon size={18} />
+              <span className="cart-text">Cart</span>
+              {cartItemCount > 0 && <span className="cart-badge">{cartItemCount}</span>}
+            </button>
+          </nav>
+
+          <div className="user-profile-badge">
+            <div className="user-avatar" title={customerEmail}>
+              {getUserInitials(customerName)}
+            </div>
+            <div className="user-info-text">
+              <span className="user-name">{customerName}</span>
+              <span className="user-email">{customerEmail}</span>
+            </div>
+            {onLogout && (
+              <button className="signout-btn" onClick={onLogout} title="Sign Out">
+                <LogoutIcon size={15} />
+                <span>Exit</span>
+              </button>
+            )}
+          </div>
         </div>
-      </nav>
+      </header>
 
-      <main className="main-content">
-
-        {/* ALERTS */}
-
-        {orderSuccess && (
-          <div className="alert success">
-            {orderSuccess}
-            <button
-              className="secondary-button"
-              onClick={() =>
-                setOrderSuccess("")
-              }
-            >
-              Close
-            </button>
-          </div>
-        )}
-
-        {error && (
-          <div className="alert error">
-            {error}
-            <button
-              className="secondary-button"
-              onClick={() => setError("")}
-            >
-              Close
-            </button>
-          </div>
-        )}
-
-        {/* PRODUCTS */}
-
-        {!showCart &&
-          !showCheckout &&
-          !showOrders && (
-            <>
-              <section className="hero">
-                <h1>
-                  Find What You Need
-                </h1>
-
+      {/* MAIN CONTAINER */}
+      <main className="store-main">
+        {/* VIEW 1: CATALOG */}
+        {view === "catalog" && (
+          <div className="catalog-view">
+            {/* EDITORIAL HERO SECTION */}
+            <section className="editorial-hero">
+              <div className="hero-content">
+                <div className="hero-badge">
+                  <ShieldCheckIcon size={14} />
+                  <span>Certified Enterprise Equipment • Direct Inventory</span>
+                </div>
+                <h1>Precision Hardware & Electronics</h1>
                 <p>
-                  Browse our products,
-                  add them to your cart
-                  and place your order
-                  easily.
+                  Industrial-grade computing, smart communication, and verified peripherals with
+                  transparent inventory and immediate dispatch.
                 </p>
-              </section>
-
-              <div className="controls">
-                <input
-                  className="search-box"
-                  type="text"
-                  placeholder="🔍 Search products..."
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                />
-
-                <select
-                  className="sort-box"
-                  value={sortOrder}
-                  onChange={(e) => {
-                    setSortOrder(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                >
-                  <option value="">
-                    Sort by Price
-                  </option>
-
-                  <option value="low">
-                    Low to High
-                  </option>
-
-                  <option value="high">
-                    High to Low
-                  </option>
-                </select>
               </div>
 
-              {loading ? (
-                <div className="empty">
-                  <h2>
-                    Loading products...
-                  </h2>
+              {/* QUICK STATS STRIP */}
+              <div className="hero-metrics">
+                <div className="metric-box">
+                  <span className="metric-num">{products.length}</span>
+                  <span className="metric-label">In-Stock Models</span>
                 </div>
-              ) : currentProducts.length === 0 ? (
-                <div className="empty">
-                  <h2>
-                    No products found
-                  </h2>
+                <div className="metric-divider"></div>
+                <div className="metric-box">
+                  <span className="metric-num">100%</span>
+                  <span className="metric-label">OEM Guaranteed</span>
                 </div>
-              ) : (
-                <div className="product-grid">
-                  {currentProducts.map(
-                    (product) => (
-                      <div
-                        className="product-card"
-                        key={product.id}
-                      >
-                        <div className="product-icon">
-                          {product.name
-                            .toLowerCase()
-                            .includes("mobile")
-                            ? "📱"
-                            : "💻"}
-                        </div>
+                <div className="metric-divider"></div>
+                <div className="metric-box">
+                  <span className="metric-num">0%</span>
+                  <span className="metric-label">Fulfillment Delay</span>
+                </div>
+              </div>
+            </section>
 
-                        <h2>
-                          {product.name}
-                        </h2>
+            {/* FILTER & SEARCH BAR */}
+            <section className="catalog-controls-bar">
+              {/* Category Pills */}
+              <div className="category-tabs">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    className={`category-pill ${selectedCategory === cat ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedCategory(cat);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
 
-                        <p className="product-description">
-                          {product.description}
-                        </p>
-
-                        <p className="product-price">
-                          ₹
-                          {Number(
-                            product.price
-                          ).toLocaleString(
-                            "en-IN"
-                          )}
-                        </p>
-
-                        <p className="stock">
-                          {product.quantity > 0
-                            ? `${product.quantity} available`
-                            : "Out of stock"}
-                        </p>
-
-                        {product.quantity > 0 && (
-                          <div className="product-quantity-controls">
-                            <button
-                              className="quantity-button"
-                              onClick={() =>
-                                decreaseProductQuantity(product)
-                              }
-                              disabled={
-                                (productQuantities[product.id] || 1) <= 1
-                              }
-                            >
-                              −
-                            </button>
-
-                            <strong>
-                              {productQuantities[product.id] || 1}
-                            </strong>
-
-                            <button
-                              className="quantity-button"
-                              onClick={() =>
-                                increaseProductQuantity(product)
-                              }
-                              disabled={
-                                (productQuantities[product.id] || 1) >=
-                                product.quantity
-                              }
-                            >
-                              +
-                            </button>
-                          </div>
-                        )}
-
-                        <button
-                          className="primary-button"
-                          onClick={() =>
-                            addToCart(product)
-                          }
-                          disabled={
-                            product.quantity ===
-                            0
-                          }
-                        >
-                          Add to Cart
-                        </button>
-                      </div>
-                    )
+              {/* Search & Sort */}
+              <div className="filter-inputs-group">
+                <div className="search-field-wrapper">
+                  <SearchIcon size={16} className="search-svg" />
+                  <input
+                    type="text"
+                    placeholder="Search specifications, model, name..."
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                  {search && (
+                    <button className="search-clear-btn" onClick={() => setSearch("")}>
+                      ✕
+                    </button>
                   )}
                 </div>
-              )}
 
-              {totalPages > 1 && (
-                <div className="pagination">
-                  <button
-                    disabled={
-                      currentPage === 1
-                    }
-                    onClick={() =>
-                      setCurrentPage(
-                        currentPage - 1
-                      )
-                    }
+                <div className="sort-field-wrapper">
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => {
+                      setSortOrder(e.target.value);
+                      setCurrentPage(1);
+                    }}
                   >
-                    Previous
-                  </button>
-
-                  <span>
-                    Page {currentPage} of{" "}
-                    {totalPages}
-                  </span>
-
-                  <button
-                    disabled={
-                      currentPage ===
-                      totalPages
-                    }
-                    onClick={() =>
-                      setCurrentPage(
-                        currentPage + 1
-                      )
-                    }
-                  >
-                    Next
-                  </button>
+                    <option value="">Sort: Featured</option>
+                    <option value="low">Price: Low to High</option>
+                    <option value="high">Price: High to Low</option>
+                  </select>
                 </div>
-              )}
-            </>
-          )}
+              </div>
+            </section>
 
-        {/* CART */}
-
-        {showCart && !showCheckout && (
-          <section className="cart-section">
-            <h1>Shopping Cart</h1>
-
-            {cart.length === 0 ? (
-              <div className="empty">
-                <h2>
-                  Your cart is empty
-                </h2>
-
+            {/* PRODUCT GRID */}
+            {loading ? (
+              <div className="loading-state-container">
+                <div className="ui-spinner"></div>
+                <p>Loading enterprise catalog...</p>
+              </div>
+            ) : currentProducts.length === 0 ? (
+              <div className="empty-catalog-state">
+                <AlertCircleIcon size={36} />
+                <h3>No Matching Equipment Found</h3>
+                <p>Try adjusting your search query or switching categories.</p>
                 <button
-                  className="primary-button"
-                  onClick={() =>
-                    setShowCart(false)
-                  }
+                  className="reset-filters-btn"
+                  onClick={() => {
+                    setSearch("");
+                    setSelectedCategory("All");
+                  }}
                 >
-                  Continue Shopping
+                  Reset All Filters
                 </button>
               </div>
             ) : (
               <>
-                {cart.map((item) => (
-                  <div
-                    className="cart-item"
-                    key={item.id}
-                  >
-                    <h2>{item.name}</h2>
+                <div className="bento-product-grid">
+                  {currentProducts.map((product) => {
+                    const category = getProductCategory(product.name);
+                    const isAvailable = product.quantity > 0;
+                    const selectedQty = productQuantities[product.id] || 1;
 
-                    <p>
-                      ₹
-                      {Number(
-                        item.price
-                      ).toLocaleString(
-                        "en-IN"
-                      )}
-                    </p>
+                    return (
+                      <article className="bento-card" key={product.id}>
+                        {/* Card Header & Visual */}
+                        <div className="card-visual-wrapper">
+                          <div className="card-top-tags">
+                            <span className="category-tag">{category}</span>
+                            <span
+                              className={`stock-indicator ${
+                                isAvailable
+                                  ? product.quantity <= 3
+                                    ? "low-stock"
+                                    : "in-stock"
+                                  : "out-stock"
+                              }`}
+                            >
+                              <span className="indicator-dot"></span>
+                              {isAvailable
+                                ? product.quantity <= 3
+                                  ? `Only ${product.quantity} left`
+                                  : `${product.quantity} available`
+                                : "Out of stock"}
+                            </span>
+                          </div>
 
-                    <div className="quantity-controls">
-                      <button
-                        className="quantity-button"
-                        onClick={() =>
-                          decreaseQuantity(
-                            item.id
-                          )
-                        }
-                      >
-                        −
-                      </button>
+                          <ProductVisual productName={product.name} />
+                        </div>
 
-                      <strong>
-                        {item.cartQuantity}
-                      </strong>
+                        {/* Card Content */}
+                        <div className="card-body">
+                          <h2 className="product-title">{product.name}</h2>
+                          <p className="product-desc">{product.description}</p>
 
-                      <button
-                        className="quantity-button"
-                        onClick={() =>
-                          increaseQuantity(
-                            item.id
-                          )
-                        }
-                      >
-                        +
-                      </button>
+                          <div className="product-pricing-row">
+                            <div className="price-block">
+                              <span className="currency-symbol">₹</span>
+                              <span className="amount-value">
+                                {Number(product.price).toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                            <span className="tax-inclusive-label">Tax incl.</span>
+                          </div>
 
-                      <button
-                        className="danger-button"
-                        onClick={() =>
-                          removeFromCart(
-                            item.id
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                          {/* Action Row */}
+                          <div className="card-actions-row">
+                            {isAvailable && (
+                              <div className="quantity-stepper">
+                                <button
+                                  type="button"
+                                  onClick={() => decreaseProductQuantity(product)}
+                                  disabled={selectedQty <= 1}
+                                  aria-label="Decrease quantity"
+                                >
+                                  <MinusIcon size={12} />
+                                </button>
+                                <span className="stepper-value">{selectedQty}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => increaseProductQuantity(product)}
+                                  disabled={selectedQty >= product.quantity}
+                                  aria-label="Increase quantity"
+                                >
+                                  <PlusIcon size={12} />
+                                </button>
+                              </div>
+                            )}
 
-                <div className="total">
-                  Total: ₹
-                  {cartTotal.toLocaleString(
-                    "en-IN"
-                  )}
+                            <button
+                              type="button"
+                              className={`add-cart-btn ${!isAvailable ? "disabled" : ""}`}
+                              onClick={() => addToCart(product)}
+                              disabled={!isAvailable}
+                            >
+                              <CartIcon size={16} />
+                              <span>{isAvailable ? "Add to Cart" : "Unavailable"}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
 
-                <button
-                  className="primary-button"
-                  onClick={openCheckout}
-                >
-                  Proceed to Checkout
-                </button>
+                {/* PAGINATION */}
+                {totalPages > 1 && (
+                  <nav className="pagination-bar">
+                    <button
+                      className="pagination-btn"
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(currentPage - 1)}
+                    >
+                      <ArrowLeftIcon size={16} />
+                      <span>Previous</span>
+                    </button>
+
+                    <div className="pagination-pages">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <button
+                          key={page}
+                          className={`page-num-btn ${currentPage === page ? "active" : ""}`}
+                          onClick={() => setCurrentPage(page)}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      className="pagination-btn"
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                    >
+                      <span>Next</span>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                      </svg>
+                    </button>
+                  </nav>
+                )}
               </>
+            )}
+          </div>
+        )}
+
+        {/* VIEW 2: CART */}
+        {view === "cart" && (
+          <section className="cart-checkout-container">
+            <div className="section-header-row">
+              <div>
+                <h2>Review Shopping Cart</h2>
+                <p>Manage quantities or proceed to order placement.</p>
+              </div>
+              <button className="back-link-btn" onClick={() => setView("catalog")}>
+                <ArrowLeftIcon size={16} />
+                <span>Continue Browsing</span>
+              </button>
+            </div>
+
+            {cart.length === 0 ? (
+              <div className="empty-state-panel">
+                <CartIcon size={40} />
+                <h3>Your Cart is Empty</h3>
+                <p>Explore our electronics catalog to select products for your order.</p>
+                <button className="primary-action-btn" onClick={() => setView("catalog")}>
+                  Browse Catalog
+                </button>
+              </div>
+            ) : (
+              <div className="cart-grid-layout">
+                {/* Cart Items List */}
+                <div className="cart-items-column">
+                  <div className="items-table-header">
+                    <span>Product Details</span>
+                    <span>Quantity</span>
+                    <span>Item Total</span>
+                    <span>Action</span>
+                  </div>
+
+                  {cart.map((item) => (
+                    <div className="cart-row-card" key={item.id}>
+                      <div className="item-info-group">
+                        <div className="item-mini-visual">
+                          <ProductVisual productName={item.name} />
+                        </div>
+                        <div>
+                          <h4 className="item-name">{item.name}</h4>
+                          <span className="item-unit-price">
+                            ₹{Number(item.price).toLocaleString("en-IN")} each
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="quantity-stepper">
+                        <button
+                          type="button"
+                          onClick={() => decreaseCartQty(item.id)}
+                          aria-label="Decrease item quantity"
+                        >
+                          <MinusIcon size={12} />
+                        </button>
+                        <span className="stepper-value">{item.cartQuantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => increaseCartQty(item.id)}
+                          disabled={item.cartQuantity >= item.quantity}
+                          aria-label="Increase item quantity"
+                        >
+                          <PlusIcon size={12} />
+                        </button>
+                      </div>
+
+                      <div className="item-row-total">
+                        ₹{Number(item.price * item.cartQuantity).toLocaleString("en-IN")}
+                      </div>
+
+                      <button
+                        className="item-delete-btn"
+                        onClick={() => removeFromCart(item.id)}
+                        title="Remove item"
+                      >
+                        <TrashIcon size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Summary Sidebar */}
+                <div className="cart-summary-sidebar">
+                  <div className="summary-card">
+                    <h3>Order Breakdown</h3>
+
+                    <div className="summary-line">
+                      <span>Subtotal ({cartItemCount} items)</span>
+                      <span>₹{cartSubtotal.toLocaleString("en-IN")}</span>
+                    </div>
+
+                    <div className="summary-line">
+                      <span>Express Shipping</span>
+                      <span className="free-shipping-tag">Free</span>
+                    </div>
+
+                    <div className="summary-line">
+                      <span>GST / Standard Tax</span>
+                      <span>Included</span>
+                    </div>
+
+                    <div className="summary-divider"></div>
+
+                    <div className="summary-line total-highlight">
+                      <span>Total Due</span>
+                      <span>₹{cartSubtotal.toLocaleString("en-IN")}</span>
+                    </div>
+
+                    <button className="primary-action-btn full-width" onClick={() => setView("checkout")}>
+                      Proceed to Checkout
+                    </button>
+
+                    <div className="trust-assurances">
+                      <div className="assurance-item">
+                        <ShieldCheckIcon size={16} />
+                        <span>Verified SSL Transaction</span>
+                      </div>
+                      <div className="assurance-item">
+                        <CheckCircleIcon size={16} />
+                        <span>Direct OEM Manufacturer Warranty</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </section>
         )}
 
-        {/* CHECKOUT */}
-
-        {showCheckout && (
-          <section className="checkout-section">
-            <h1>Checkout</h1>
-
-            <h2>Order Summary</h2>
-
-            {cart.map((item) => (
-              <p key={item.id}>
-                {item.name} ×{" "}
-                {item.cartQuantity} — ₹
-                {(
-                  item.price *
-                  item.cartQuantity
-                ).toLocaleString("en-IN")}
-              </p>
-            ))}
-
-            <div className="total">
-              Total: ₹
-              {cartTotal.toLocaleString(
-                "en-IN"
-              )}
+        {/* VIEW 3: CHECKOUT */}
+        {view === "checkout" && (
+          <section className="cart-checkout-container">
+            <div className="section-header-row">
+              <div>
+                <h2>Final Checkout & Confirmation</h2>
+                <p>Review customer details and dispatch information before submission.</p>
+              </div>
+              <button className="back-link-btn" onClick={() => setView("cart")}>
+                <ArrowLeftIcon size={16} />
+                <span>Return to Cart</span>
+              </button>
             </div>
 
-            <p className="checkout-user">
-              Ordering as <strong>{customerName}</strong> ({customerEmail})
-            </p>
+            <div className="checkout-layout-grid">
+              {/* Customer & Delivery Form */}
+              <div className="checkout-main-column">
+                <div className="checkout-form-panel">
+                  <h3>Customer & Delivery Profile</h3>
 
-            <button
-              className="primary-button"
-              onClick={placeOrder}
-              disabled={placingOrder}
-            >
-              {placingOrder
-                ? "Placing Order..."
-                : "Place Order"}
-            </button>
+                  <div className="profile-verified-card">
+                    <div className="verified-chip">
+                      <CheckCircleIcon size={14} />
+                      <span>Authenticated Account</span>
+                    </div>
 
-            <br />
-            <br />
+                    <div className="info-grid">
+                      <div>
+                        <span className="field-hint">Recipient Name</span>
+                        <strong className="field-val">{customerName}</strong>
+                      </div>
+                      <div>
+                        <span className="field-hint">Registered Email</span>
+                        <strong className="field-val">{customerEmail}</strong>
+                      </div>
+                      <div>
+                        <span className="field-hint">Order Status</span>
+                        <span className="status-pill confirmed">CONFIRMED (ON SUBMISSION)</span>
+                      </div>
+                      <div>
+                        <span className="field-hint">Dispatch Mode</span>
+                        <span className="field-val">Priority Express Courier</span>
+                      </div>
+                    </div>
+                  </div>
 
-            <button
-              className="secondary-button"
-              onClick={() => {
-                setShowCheckout(false);
-                setShowCart(true);
-              }}
-            >
-              Back to Cart
-            </button>
+                  <h3 style={{ marginTop: "2rem" }}>Payment Method</h3>
+                  <div className="payment-method-selector">
+                    <div className="payment-card selected">
+                      <input type="radio" checked readOnly name="payment" id="cod" />
+                      <label htmlFor="cod">
+                        <strong>Official Direct Invoicing / Cash on Delivery</strong>
+                        <span>Corporate invoice generated instantly with dispatch details</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Order Confirmation Summary */}
+              <div className="checkout-summary-column">
+                <div className="summary-card">
+                  <h3>Line Items Summary</h3>
+
+                  <div className="checkout-items-list">
+                    {cart.map((item) => (
+                      <div className="checkout-item-line" key={item.id}>
+                        <div className="item-title-qty">
+                          <span className="item-name">{item.name}</span>
+                          <span className="item-qty-badge">× {item.cartQuantity}</span>
+                        </div>
+                        <span className="item-line-price">
+                          ₹{(item.price * item.cartQuantity).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="summary-divider"></div>
+
+                  <div className="summary-line total-highlight">
+                    <span>Grand Total</span>
+                    <span>₹{cartSubtotal.toLocaleString("en-IN")}</span>
+                  </div>
+
+                  <button
+                    className="primary-action-btn full-width"
+                    onClick={handlePlaceOrder}
+                    disabled={placingOrder}
+                  >
+                    {placingOrder ? (
+                      <span className="spinner-wrap">
+                        <span className="auth-spinner"></span>
+                        Submitting Order...
+                      </span>
+                    ) : (
+                      "Confirm & Place Order"
+                    )}
+                  </button>
+
+                  <p className="order-disclaimer">
+                    By confirming, your order will be recorded in the order management system.
+                  </p>
+                </div>
+              </div>
+            </div>
           </section>
         )}
 
-        {/* ORDERS */}
-
-        {showOrders &&
-          !selectedOrder && (
-            <section className="orders-section">
-              <h1>My Orders</h1>
-
-              {ordersLoading ? (
-                <div className="empty">
-                  Loading orders...
-                </div>
-              ) : orders.length === 0 ? (
-                <div className="empty">
-                  <h2>
-                    No orders found
-                  </h2>
-                </div>
-              ) : (
-                orders.map((order) => (
-                  <div
-                    className="order-card"
-                    key={order.id}
-                  >
-                    <h2>
-                      Order #{order.id}
-                    </h2>
-
-                    <p>
-                      Customer:{" "}
-                      {order.customerName}
-                    </p>
-
-                    <p>
-                      Email:{" "}
-                      {order.customerEmail}
-                    </p>
-
-                    <p>
-                      Status:{" "}
-                      <strong>
-                        {order.status}
-                      </strong>
-                    </p>
-
-                    <p>
-                      Total: ₹
-                      {Number(
-                        order.totalPrice
-                      ).toLocaleString(
-                        "en-IN"
-                      )}
-                    </p>
-
-                    <div className="order-actions">
-                      <button
-                        className="secondary-button"
-                        onClick={() =>
-                          viewOrder(
-                            order.id
-                          )
-                        }
-                      >
-                        View Details
-                      </button>
-
-                      {order.status !==
-                        "CANCELLED" && (
-                        <button
-                          className="danger-button"
-                          onClick={() =>
-                            handleCancelOrder(
-                              order.id
-                            )
-                          }
-                        >
-                          Cancel Order
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-
-              <br />
-
-              <button
-                className="secondary-button"
-                onClick={() =>
-                  setShowOrders(false)
-                }
-              >
-                Back to Products
+        {/* VIEW 4: ORDERS LIST */}
+        {view === "orders" && (
+          <section className="orders-container">
+            <div className="section-header-row">
+              <div>
+                <h2>Order History & Invoices</h2>
+                <p>Track statuses, inspect item details, and download generated invoices.</p>
+              </div>
+              <button className="back-link-btn" onClick={() => setView("catalog")}>
+                <ArrowLeftIcon size={16} />
+                <span>Store Catalog</span>
               </button>
-            </section>
-          )}
+            </div>
 
-        {/* ORDER DETAILS */}
+            {ordersLoading ? (
+              <div className="loading-state-container">
+                <div className="ui-spinner"></div>
+                <p>Retrieving your order records...</p>
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="empty-state-panel">
+                <OrdersIcon size={40} />
+                <h3>No Previous Orders Found</h3>
+                <p>You have not placed any orders yet. Browse our hardware to place your first order.</p>
+                <button className="primary-action-btn" onClick={() => setView("catalog")}>
+                  Browse Products
+                </button>
+              </div>
+            ) : (
+              <div className="orders-table-wrapper">
+                <table className="orders-data-table">
+                  <thead>
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Customer</th>
+                      <th>Email</th>
+                      <th>Status</th>
+                      <th>Total Value</th>
+                      <th className="text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map((ord) => (
+                      <tr key={ord.id}>
+                        <td>
+                          <span className="order-id-badge">#{ord.id}</span>
+                        </td>
+                        <td>
+                          <span className="customer-cell">{ord.customerName}</span>
+                        </td>
+                        <td className="email-cell">{ord.customerEmail}</td>
+                        <td>
+                          <span
+                            className={`status-pill ${
+                              ord.status === "CANCELLED"
+                                ? "cancelled"
+                                : ord.status === "CONFIRMED"
+                                ? "confirmed"
+                                : "pending"
+                            }`}
+                          >
+                            <span className="indicator-dot"></span>
+                            {ord.status}
+                          </span>
+                        </td>
+                        <td>
+                          <strong className="order-price-val">
+                            ₹{Number(ord.totalPrice).toLocaleString("en-IN")}
+                          </strong>
+                        </td>
+                        <td className="text-right">
+                          <div className="table-actions-group">
+                            <button
+                              className="view-details-btn"
+                              onClick={() => viewOrderDetail(ord.id)}
+                            >
+                              Details
+                            </button>
+                            {ord.status !== "CANCELLED" && (
+                              <button
+                                className="cancel-order-btn"
+                                onClick={() => handleCancelOrder(ord.id)}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
-        {showOrders &&
-          selectedOrder && (
-            <section className="order-details">
-              <h1>
-                Order #
-                {selectedOrder.id}
-              </h1>
+        {/* VIEW 5: ORDER DETAIL & INVOICE */}
+        {view === "order-detail" && selectedOrder && (
+          <section className="order-detail-container">
+            <div className="section-header-row">
+              <div>
+                <h2>Order #{selectedOrder.id} Overview</h2>
+                <p>Detailed item breakdown and official invoice generation.</p>
+              </div>
+              <button
+                className="back-link-btn"
+                onClick={() => {
+                  setView("orders");
+                  loadOrders();
+                }}
+              >
+                <ArrowLeftIcon size={16} />
+                <span>All Orders</span>
+              </button>
+            </div>
 
-              <p>
-                Customer:{" "}
-                {selectedOrder.customerName}
-              </p>
-
-              <p>
-                Email:{" "}
-                {selectedOrder.customerEmail}
-              </p>
-
-              <p>
-                Status:{" "}
-                <strong>
-                  {selectedOrder.status}
-                </strong>
-              </p>
-
-              <p>
-                Total: ₹
-                {Number(
-                  selectedOrder.totalPrice
-                ).toLocaleString(
-                  "en-IN"
-                )}
-              </p>
-
-              <h2>
-                Order Items
-              </h2>
-
-              {orderItems.map((item) => (
-                <div
-                  className="cart-item"
-                  key={item.id}
-                >
-                  <h3>
-                    {item.productName}
-                  </h3>
-
-                  <p>
-                    Price: ₹
-                    {Number(
-                      item.price
-                    ).toLocaleString(
-                      "en-IN"
-                    )}
-                  </p>
-
-                  <div className="quantity-controls">
-                    <button
-                      className="quantity-button"
-                      disabled={
-                        item.quantity <= 1
-                      }
-                      onClick={() =>
-                        updateItemQuantity(
-                          item.id,
-                          item.quantity - 1
-                        )
-                      }
+            <div className="order-detail-grid">
+              {/* Left Column: Metadata & Items */}
+              <div className="order-detail-main">
+                {/* Order Status Card */}
+                <div className="detail-meta-card">
+                  <div className="meta-cell">
+                    <span className="meta-label">Order Identifier</span>
+                    <strong className="meta-val">#{selectedOrder.id}</strong>
+                  </div>
+                  <div className="meta-cell">
+                    <span className="meta-label">Customer Name</span>
+                    <strong className="meta-val">{selectedOrder.customerName}</strong>
+                  </div>
+                  <div className="meta-cell">
+                    <span className="meta-label">Contact Email</span>
+                    <strong className="meta-val">{selectedOrder.customerEmail}</strong>
+                  </div>
+                  <div className="meta-cell">
+                    <span className="meta-label">Current Status</span>
+                    <span
+                      className={`status-pill ${
+                        selectedOrder.status === "CANCELLED"
+                          ? "cancelled"
+                          : selectedOrder.status === "CONFIRMED"
+                          ? "confirmed"
+                          : "pending"
+                      }`}
                     >
-                      −
-                    </button>
-
-                    <strong>
-                      {item.quantity}
-                    </strong>
-
-                    <button
-                      className="quantity-button"
-                      onClick={() =>
-                        updateItemQuantity(
-                          item.id,
-                          item.quantity + 1
-                        )
-                      }
-                    >
-                      +
-                    </button>
+                      <span className="indicator-dot"></span>
+                      {selectedOrder.status}
+                    </span>
                   </div>
                 </div>
-              ))}
 
-              {selectedOrder.status !== "CANCELLED" && (
-                <>
-                  <button
-                    className="secondary-button"
-                    onClick={() =>
-                      handleGenerateInvoice(selectedOrder.id)
-                    }
-                    disabled={invoiceLoading}
-                  >
-                    {invoiceLoading
-                      ? "Generating Invoice..."
-                      : "Generate Invoice"}
-                  </button>
+                {/* Items List */}
+                <div className="order-items-card">
+                  <h3>Purchased Items ({orderItems.length})</h3>
 
-                  {invoice && (
-                    <div className="invoice-box">
-                      <h2>Invoice Generated</h2>
+                  {orderItems.length === 0 ? (
+                    <p className="no-items-text">No items recorded for this order.</p>
+                  ) : (
+                    <div className="order-items-table">
+                      {orderItems.map((item) => (
+                        <div className="order-item-row" key={item.id}>
+                          <div className="order-item-name-col">
+                            <strong>{item.productName}</strong>
+                            <span className="unit-cost">
+                              ₹{Number(item.price).toLocaleString("en-IN")} each
+                            </span>
+                          </div>
 
-                      <p>
-                        <strong>Invoice ID:</strong>{" "}
-                        {invoice.invoiceId}
-                      </p>
+                          <div className="order-item-qty-col">
+                            <span className="qty-tag">Qty: {item.quantity}</span>
+                            {selectedOrder.status !== "CANCELLED" && (
+                              <div className="quantity-stepper small">
+                                <button
+                                  type="button"
+                                  disabled={item.quantity <= 1}
+                                  onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
+                                  aria-label="Decrease quantity"
+                                >
+                                  <MinusIcon size={10} />
+                                </button>
+                                <span className="stepper-value">{item.quantity}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                                  aria-label="Increase quantity"
+                                >
+                                  <PlusIcon size={10} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
 
-                      <p>
-                        <strong>Order ID:</strong>{" "}
-                        {invoice.orderId}
-                      </p>
-
-                      <p>
-                        <strong>Customer:</strong>{" "}
-                        {invoice.customerName}
-                      </p>
-
-                      <p>
-                        <strong>Email:</strong>{" "}
-                        {invoice.customerEmail}
-                      </p>
-
-                      <p>
-                        <strong>Total Amount:</strong> ₹
-                        {Number(
-                          invoice.totalAmount
-                        ).toLocaleString("en-IN")}
-                      </p>
-
-                      <p>
-                        <strong>Status:</strong> Generated
-                      </p>
+                          <div className="order-item-subtotal-col">
+                            ₹{(item.price * item.quantity).toLocaleString("en-IN")}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
-                </>
-              )}
 
-              <br />
-              <br />
+                  <div className="order-total-bar">
+                    <span>Order Total:</span>
+                    <strong>₹{Number(selectedOrder.totalPrice).toLocaleString("en-IN")}</strong>
+                  </div>
+                </div>
+              </div>
 
-              <button
-                className="secondary-button"
-                onClick={() =>
-                  setSelectedOrder(null)
-                }
-              >
-                Back to My Orders
-              </button>
-            </section>
-          )}
+              {/* Right Column: Invoice Management */}
+              <div className="order-invoice-sidebar">
+                <div className="invoice-action-card">
+                  <h3>Official Tax Invoice</h3>
+                  <p>Generate and view the enterprise tax invoice for this order record.</p>
+
+                  {selectedOrder.status === "CANCELLED" ? (
+                    <div className="invoice-cancelled-notice">
+                      <AlertCircleIcon size={16} />
+                      <span>Invoice unavailable for cancelled orders.</span>
+                    </div>
+                  ) : (
+                    <button
+                      className="generate-invoice-btn"
+                      onClick={() => handleGenerateInvoice(selectedOrder.id)}
+                      disabled={invoiceLoading}
+                    >
+                      <PrinterIcon size={16} />
+                      <span>{invoiceLoading ? "Generating..." : "Generate Official Invoice"}</span>
+                    </button>
+                  )}
+
+                  {invoice && (
+                    <div className="invoice-rendered-document" id="invoice-doc">
+                      <div className="invoice-header">
+                        <div>
+                          <h4 className="invoice-company">ShopEase Corporation</h4>
+                          <span className="invoice-meta">Enterprise Hardware Invoice</span>
+                        </div>
+                        <span className="invoice-badge">PAID / CONFIRMED</span>
+                      </div>
+
+                      <div className="invoice-details-grid">
+                        <div>
+                          <span className="inv-label">Invoice Ref</span>
+                          <strong className="inv-val">{invoice.invoiceId}</strong>
+                        </div>
+                        <div>
+                          <span className="inv-label">Order Reference</span>
+                          <strong className="inv-val">#{invoice.orderId}</strong>
+                        </div>
+                        <div>
+                          <span className="inv-label">Billed To</span>
+                          <strong className="inv-val">{invoice.customerName}</strong>
+                        </div>
+                        <div>
+                          <span className="inv-label">Billing Email</span>
+                          <strong className="inv-val">{invoice.customerEmail}</strong>
+                        </div>
+                      </div>
+
+                      <div className="invoice-amount-block">
+                        <span className="inv-label">Total Amount</span>
+                        <strong className="inv-big-total">
+                          ₹{Number(invoice.totalAmount).toLocaleString("en-IN")}
+                        </strong>
+                      </div>
+
+                      <button
+                        className="print-invoice-btn"
+                        onClick={() => window.print()}
+                      >
+                        <PrinterIcon size={15} />
+                        <span>Print / Save Receipt</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
