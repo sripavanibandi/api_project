@@ -23,10 +23,56 @@ import {
   MinusIcon,
   PrinterIcon,
   ShieldCheckIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
+  MapPinIcon,
+  PhoneIcon,
+  TruckIcon
 } from "./components/Icons";
 import { ProductVisual, getProductCategory } from "./components/ProductVisual";
 import "./App.css";
+
+function numberToWordsINR(amount) {
+  const n = Math.floor(Number(amount) || 0);
+  if (n <= 0) return "Zero Rupees Only";
+
+  const units = [
+    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+    "Seventeen", "Eighteen", "Nineteen"
+  ];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  function formatThreeDigits(val) {
+    let s = "";
+    if (val >= 100) {
+      s += units[Math.floor(val / 100)] + " Hundred ";
+      val %= 100;
+    }
+    if (val >= 20) {
+      s += tens[Math.floor(val / 10)] + " ";
+      val %= 10;
+    }
+    if (val > 0) {
+      s += units[val] + " ";
+    }
+    return s.trim();
+  }
+
+  let result = "";
+  const crore = Math.floor(n / 10000000);
+  let rem = n % 10000000;
+  const lakh = Math.floor(rem / 100000);
+  rem = rem % 100000;
+  const thousand = Math.floor(rem / 1000);
+  rem = rem % 1000;
+
+  if (crore > 0) result += formatThreeDigits(crore) + " Crore ";
+  if (lakh > 0) result += formatThreeDigits(lakh) + " Lakh ";
+  if (thousand > 0) result += formatThreeDigits(thousand) + " Thousand ";
+  if (rem > 0) result += formatThreeDigits(rem) + " ";
+
+  return (result.trim() + " Rupees Only");
+}
 
 function App({ onLogout, currentUser }) {
   const [products, setProducts] = useState([]);
@@ -56,7 +102,38 @@ function App({ onLogout, currentUser }) {
   const customerName = loggedInUser.name || "Customer";
   const customerEmail = loggedInUser.email || "";
 
-  const productsPerPage = 6;
+  // Delivery Address State
+  const [deliveryStreet, setDeliveryStreet] = useState("Flat 402, Skyline Residency, MG Road");
+  const [deliveryCity, setDeliveryCity] = useState("Bengaluru");
+  const [deliveryState, setDeliveryState] = useState("Karnataka");
+  const [deliveryPincode, setDeliveryPincode] = useState("560001");
+  const [deliveryPhone, setDeliveryPhone] = useState("+91 98765 43210");
+  const [addressPreset, setAddressPreset] = useState("home"); // "home" | "office" | "custom"
+
+  function handleSelectPreset(preset) {
+    setAddressPreset(preset);
+    if (preset === "home") {
+      setDeliveryStreet("Flat 402, Skyline Residency, MG Road");
+      setDeliveryCity("Bengaluru");
+      setDeliveryState("Karnataka");
+      setDeliveryPincode("560001");
+      setDeliveryPhone("+91 98765 43210");
+    } else if (preset === "office") {
+      setDeliveryStreet("Tech Hub Tower B, 5th Floor, Outer Ring Road");
+      setDeliveryCity("Bengaluru");
+      setDeliveryState("Karnataka");
+      setDeliveryPincode("560103");
+      setDeliveryPhone("+91 80 4123 4567");
+    } else if (preset === "custom") {
+      setDeliveryStreet("");
+      setDeliveryCity("");
+      setDeliveryState("");
+      setDeliveryPincode("");
+      setDeliveryPhone("");
+    }
+  }
+
+  const productsPerPage = 8;
 
   useEffect(() => {
     loadProducts();
@@ -123,6 +200,7 @@ function App({ onLogout, currentUser }) {
       setError("");
       const data = await generateInvoice(orderId);
       setInvoice(data);
+      setNotification(`Official Tax Invoice #${data.invoiceId} generated successfully!`);
     } catch (err) {
       setError(err.message || "Failed to generate invoice");
     } finally {
@@ -214,11 +292,26 @@ function App({ onLogout, currentUser }) {
 
   async function handlePlaceOrder() {
     if (cart.length === 0) return;
+
+    const addressParts = [
+      deliveryStreet.trim(),
+      deliveryCity.trim(),
+      deliveryState.trim() && deliveryPincode.trim()
+        ? `${deliveryState.trim()} - ${deliveryPincode.trim()}`
+        : (deliveryState.trim() || deliveryPincode.trim())
+    ].filter(Boolean);
+
+    const fullAddress = addressParts.join(", ");
+    if (!fullAddress || !deliveryPhone.trim()) {
+      setError("Please provide a complete shipping address and contact phone number.");
+      return;
+    }
+
     try {
       setPlacingOrder(true);
       setError("");
 
-      const order = await createOrder(customerName, customerEmail);
+      const order = await createOrder(customerName, customerEmail, fullAddress, deliveryPhone.trim());
 
       for (const item of cart) {
         await addOrderItem({
@@ -243,14 +336,35 @@ function App({ onLogout, currentUser }) {
   }
 
   // Filter & Search Logic
-  const categories = ["All", "Electronics", "Fashion", "Groceries", "Home & Living", "Lifestyle"];
+  const allKnownCategories = [
+    "All",
+    "Electronics",
+    "Fashion",
+    "Groceries",
+    "Home & Living",
+    "Beauty & Personal Care",
+    "Sports & Fitness",
+    "Books & Stationery"
+  ];
+  const dynamicCategories = Array.from(
+    new Set(
+      products
+        .map((p) => getProductCategory(p.name, p.description, p.category))
+        .filter(Boolean)
+    )
+  );
+  const categories = [
+    "All",
+    ...allKnownCategories.filter((c) => c !== "All" && dynamicCategories.includes(c)),
+    ...dynamicCategories.filter((c) => !allKnownCategories.includes(c))
+  ];
 
   const filteredProducts = products
     .filter((product) => {
       const matchesSearch =
         product.name.toLowerCase().includes(search.toLowerCase()) ||
         product.description?.toLowerCase().includes(search.toLowerCase());
-      const cat = getProductCategory(product.name, product.description);
+      const cat = getProductCategory(product.name, product.description, product.category);
       const matchesCategory = selectedCategory === "All" || cat === selectedCategory;
       return matchesSearch && matchesCategory;
     })
@@ -380,11 +494,11 @@ function App({ onLogout, currentUser }) {
               <div className="hero-content">
                 <div className="hero-badge">
                   <ShieldCheckIcon size={14} />
-                  <span>Curated Marketplace • Daily Groceries, Fashion, Tech & Home</span>
+                  <span>Curated Marketplace • Tech, Fashion, Groceries, Living, Beauty & More</span>
                 </div>
                 <h1>Everything You Need, Delivered.</h1>
                 <p>
-                  Discover fresh groceries, timeless apparel, everyday home essentials, and modern electronics.
+                  Discover fresh groceries, trending fashion, home essentials, top gadgets, wellness & books.
                   Quality-inspected with transparent pricing and express doorstep delivery.
                 </p>
               </div>
@@ -397,8 +511,8 @@ function App({ onLogout, currentUser }) {
                 </div>
                 <div className="metric-divider"></div>
                 <div className="metric-box">
-                  <span className="metric-num">Multi</span>
-                  <span className="metric-label">Departments</span>
+                  <span className="metric-num">{categories.length > 1 ? categories.length - 1 : "Multi"}</span>
+                  <span className="metric-label">Categories</span>
                 </div>
                 <div className="metric-divider"></div>
                 <div className="metric-box">
@@ -432,7 +546,7 @@ function App({ onLogout, currentUser }) {
                   <SearchIcon size={16} className="search-svg" />
                   <input
                     type="text"
-                    placeholder="Search fashion, groceries, electronics, home..."
+                    placeholder="Search products across tech, fashion, groceries, beauty, books..."
                     value={search}
                     onChange={(e) => {
                       setSearch(e.target.value);
@@ -487,7 +601,7 @@ function App({ onLogout, currentUser }) {
               <>
                 <div className="bento-product-grid">
                   {currentProducts.map((product) => {
-                    const category = getProductCategory(product.name, product.description);
+                    const category = getProductCategory(product.name, product.description, product.category);
                     const isAvailable = product.quantity > 0;
                     const selectedQty = productQuantities[product.id] || 1;
 
@@ -515,7 +629,27 @@ function App({ onLogout, currentUser }) {
                             </span>
                           </div>
 
-                          <ProductVisual productName={product.name} productDesc={product.description} />
+                          {product.imageUrl ? (
+                            <div className="product-image-frame">
+                              <img
+                                src={product.imageUrl}
+                                alt={product.name}
+                                className="product-photo-img"
+                                loading="lazy"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none";
+                                  if (e.currentTarget.nextElementSibling) {
+                                    e.currentTarget.nextElementSibling.style.display = "flex";
+                                  }
+                                }}
+                              />
+                              <div className="product-photo-fallback" style={{ display: "none" }}>
+                                <ProductVisual productName={product.name} productDesc={product.description} category={category} />
+                              </div>
+                            </div>
+                          ) : (
+                            <ProductVisual productName={product.name} productDesc={product.description} category={category} />
+                          )}
                         </div>
 
                         {/* Card Content */}
@@ -653,7 +787,22 @@ function App({ onLogout, currentUser }) {
                     <div className="cart-row-card" key={item.id}>
                       <div className="item-info-group">
                         <div className="item-mini-visual">
-                          <ProductVisual productName={item.name} productDesc={item.description || ""} />
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt={item.name}
+                              className="item-cart-photo"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                if (e.currentTarget.nextElementSibling) {
+                                  e.currentTarget.nextElementSibling.style.display = "flex";
+                                }
+                              }}
+                            />
+                          ) : null}
+                          <div className="item-mini-fallback" style={{ display: item.imageUrl ? "none" : "flex" }}>
+                            <ProductVisual productName={item.name} productDesc={item.description || ""} category={item.category} />
+                          </div>
                         </div>
                         <div>
                           <h4 className="item-name">{item.name}</h4>
@@ -787,6 +936,134 @@ function App({ onLogout, currentUser }) {
                       <div>
                         <span className="field-hint">Dispatch Mode</span>
                         <span className="field-val">Priority Express Courier</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delivery Address Form */}
+                  <div className="delivery-address-panel">
+                    <div className="section-title-with-icon">
+                      <MapPinIcon size={20} className="icon-gold" />
+                      <div>
+                        <h4 className="delivery-section-heading">Shipping & Delivery Destination</h4>
+                        <p className="delivery-section-subtitle">
+                          Choose a quick preset or specify the destination address for physical delivery
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Presets */}
+                    <div className="address-preset-buttons">
+                      <button
+                        type="button"
+                        className={`preset-btn ${addressPreset === "home" ? "active" : ""}`}
+                        onClick={() => handleSelectPreset("home")}
+                      >
+                        <span className="preset-label">🏠 Home Residence</span>
+                        <span className="preset-sub">MG Road, Bengaluru</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`preset-btn ${addressPreset === "office" ? "active" : ""}`}
+                        onClick={() => handleSelectPreset("office")}
+                      >
+                        <span className="preset-label">🏢 Tech Hub Office</span>
+                        <span className="preset-sub">Outer Ring Rd, Bengaluru</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`preset-btn ${addressPreset === "custom" ? "active" : ""}`}
+                        onClick={() => handleSelectPreset("custom")}
+                      >
+                        <span className="preset-label">📍 Custom Destination</span>
+                        <span className="preset-sub">Enter custom address</span>
+                      </button>
+                    </div>
+
+                    {/* Form Inputs Grid */}
+                    <div className="address-form-grid">
+                      <div className="address-form-group full-width">
+                        <label className="form-field-label">Street / House / Landmark Address *</label>
+                        <input
+                          type="text"
+                          className="address-input-field"
+                          placeholder="e.g. Flat 402, Skyline Residency, MG Road"
+                          value={deliveryStreet}
+                          onChange={(e) => {
+                            setDeliveryStreet(e.target.value);
+                            setAddressPreset("custom");
+                          }}
+                          required
+                        />
+                      </div>
+
+                      <div className="address-form-group">
+                        <label className="form-field-label">City *</label>
+                        <input
+                          type="text"
+                          className="address-input-field"
+                          placeholder="e.g. Bengaluru"
+                          value={deliveryCity}
+                          onChange={(e) => {
+                            setDeliveryCity(e.target.value);
+                            setAddressPreset("custom");
+                          }}
+                          required
+                        />
+                      </div>
+
+                      <div className="address-form-group">
+                        <label className="form-field-label">State / Region *</label>
+                        <input
+                          type="text"
+                          className="address-input-field"
+                          placeholder="e.g. Karnataka"
+                          value={deliveryState}
+                          onChange={(e) => {
+                            setDeliveryState(e.target.value);
+                            setAddressPreset("custom");
+                          }}
+                          required
+                        />
+                      </div>
+
+                      <div className="address-form-group">
+                        <label className="form-field-label">Postal PIN Code *</label>
+                        <input
+                          type="text"
+                          className="address-input-field"
+                          placeholder="e.g. 560001"
+                          value={deliveryPincode}
+                          onChange={(e) => {
+                            setDeliveryPincode(e.target.value);
+                            setAddressPreset("custom");
+                          }}
+                          required
+                        />
+                      </div>
+
+                      <div className="address-form-group">
+                        <label className="form-field-label">Delivery Contact Phone *</label>
+                        <div className="input-with-icon-wrapper">
+                          <PhoneIcon size={16} className="input-leading-icon" />
+                          <input
+                            type="tel"
+                            className="address-input-field with-icon"
+                            placeholder="e.g. +91 98765 43210"
+                            value={deliveryPhone}
+                            onChange={(e) => setDeliveryPhone(e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Delivery Assurance Banner */}
+                    <div className="delivery-dispatch-banner">
+                      <TruckIcon size={20} className="icon-truck" />
+                      <div>
+                        <strong>Priority Express Delivery (Free)</strong>
+                        <span>Dispatched via verified courier with real-time transit tracking & invoice bill</span>
                       </div>
                     </div>
                   </div>
@@ -1005,6 +1282,37 @@ function App({ onLogout, currentUser }) {
                   </div>
                 </div>
 
+                {/* Delivery & Shipping Destination Card */}
+                <div className="delivery-destination-card">
+                  <div className="card-top-header">
+                    <div className="title-with-icon">
+                      <MapPinIcon size={18} className="icon-gold" />
+                      <h4>Delivery & Shipping Destination</h4>
+                    </div>
+                    <span className="dispatch-badge">
+                      <TruckIcon size={14} />
+                      {selectedOrder.status === "CANCELLED" ? "Delivery Cancelled" : "Priority Express Dispatch"}
+                    </span>
+                  </div>
+
+                  <div className="delivery-dest-grid">
+                    <div className="dest-address-block">
+                      <span className="dest-label">Physical Shipping Destination</span>
+                      <p className="dest-address-text">
+                        {selectedOrder.deliveryAddress || "Standard Registered Delivery Address"}
+                      </p>
+                    </div>
+
+                    <div className="dest-contact-block">
+                      <span className="dest-label">Recipient Phone</span>
+                      <p className="dest-contact-text">
+                        <PhoneIcon size={14} />
+                        <span>{selectedOrder.deliveryPhone || "Not specified"}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Items List */}
                 <div className="order-items-card">
                   <h3>Purchased Items ({orderItems.length})</h3>
@@ -1085,47 +1393,231 @@ function App({ onLogout, currentUser }) {
 
                   {invoice && (
                     <div className="invoice-rendered-document" id="invoice-doc">
-                      <div className="invoice-header">
-                        <div>
-                          <h4 className="invoice-company">ShopEase Corporation</h4>
-                          <span className="invoice-meta">Enterprise Hardware Invoice</span>
+                      {/* Super Header / Brand & Meta */}
+                      <div className="invoice-super-header">
+                        <div className="company-official-block">
+                          <div className="company-logo-text">
+                            <span className="brand-dot"></span>
+                            <h4>ShopEase Corporation Pvt. Ltd.</h4>
+                          </div>
+                          <p className="company-legal-info">
+                            <strong>CIN:</strong> U72200KA2024PTC198421 &nbsp;|&nbsp; <strong>GSTIN:</strong> 29AAECS9876K1Z9<br />
+                            <strong>Registered Office:</strong> Plot 42, Tech Corridor, Outer Ring Road, Bengaluru, Karnataka - 560103<br />
+                            <strong>Support:</strong> support@shopease.com &nbsp;|&nbsp; <strong>Toll-Free:</strong> 1800-200-EASE (24×7)
+                          </p>
                         </div>
-                        <span className="invoice-badge">PAID / CONFIRMED</span>
+
+                        <div className="invoice-title-meta-block">
+                          <div className="doc-category-badge">TAX INVOICE / BILL OF SUPPLY</div>
+                          <span className="invoice-badge paid-confirmed">
+                            <CheckCircleIcon size={13} />
+                            <span>PAID / CONFIRMED</span>
+                          </span>
+                          <div className="key-meta-rows">
+                            <div className="meta-pair">
+                              <span className="meta-k">Invoice Ref:</span>
+                              <strong className="meta-v">{invoice.invoiceId}</strong>
+                            </div>
+                            <div className="meta-pair">
+                              <span className="meta-k">Date of Issue:</span>
+                              <strong className="meta-v">
+                                {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                              </strong>
+                            </div>
+                            <div className="meta-pair">
+                              <span className="meta-k">Order Reference:</span>
+                              <strong className="meta-v">#{invoice.orderId}</strong>
+                            </div>
+                            <div className="meta-pair">
+                              <span className="meta-k">Payment Mode:</span>
+                              <strong className="meta-v">Direct Invoice / Pay on Delivery</strong>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="invoice-details-grid">
-                        <div>
-                          <span className="inv-label">Invoice Ref</span>
-                          <strong className="inv-val">{invoice.invoiceId}</strong>
+                      <div className="invoice-divider"></div>
+
+                      {/* Billed To and Delivered To Party Cards */}
+                      <div className="invoice-parties-grid">
+                        <div className="party-card billed-to">
+                          <span className="party-role-tag">Customer / Billed To</span>
+                          <h5 className="party-name">{invoice.customerName}</h5>
+                          <div className="party-meta-details">
+                            <div className="party-meta-line">
+                              <span className="meta-title">Email:</span>
+                              <span className="meta-data">{invoice.customerEmail}</span>
+                            </div>
+                            <div className="party-meta-line">
+                              <span className="meta-title">Phone:</span>
+                              <span className="meta-data">{invoice.deliveryPhone || selectedOrder.deliveryPhone || "Not specified"}</span>
+                            </div>
+                            <div className="party-meta-line">
+                              <span className="meta-title">Client Type:</span>
+                              <span className="meta-data">Authenticated Retail Consumer</span>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <span className="inv-label">Order Reference</span>
-                          <strong className="inv-val">#{invoice.orderId}</strong>
-                        </div>
-                        <div>
-                          <span className="inv-label">Billed To</span>
-                          <strong className="inv-val">{invoice.customerName}</strong>
-                        </div>
-                        <div>
-                          <span className="inv-label">Billing Email</span>
-                          <strong className="inv-val">{invoice.customerEmail}</strong>
+
+                        <div className="party-card shipped-to">
+                          <span className="party-role-tag">Consignee / Delivering To</span>
+                          <h5 className="party-name">{invoice.customerName}</h5>
+                          <div className="party-meta-details">
+                            <div className="party-meta-line">
+                              <span className="meta-title">Destination:</span>
+                              <span className="meta-data address-val">
+                                {invoice.deliveryAddress || selectedOrder.deliveryAddress || "Standard Registered Delivery Address"}
+                              </span>
+                            </div>
+                            <div className="party-meta-line">
+                              <span className="meta-title">Delivery Phone:</span>
+                              <span className="meta-data">{invoice.deliveryPhone || selectedOrder.deliveryPhone || "Not specified"}</span>
+                            </div>
+                            <div className="party-meta-line">
+                              <span className="meta-title">Logistics:</span>
+                              <span className="meta-data">Priority Express Courier (Tracked)</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="invoice-amount-block">
-                        <span className="inv-label">Total Amount</span>
-                        <strong className="inv-big-total">
-                          ₹{Number(invoice.totalAmount).toLocaleString("en-IN")}
-                        </strong>
+                      {/* Itemized Products Table */}
+                      <div className="invoice-table-wrapper">
+                        <table className="invoice-items-table">
+                          <thead>
+                            <tr>
+                              <th style={{ width: "5%" }}>#</th>
+                              <th style={{ width: "45%" }}>Item Description</th>
+                              <th style={{ width: "12%" }}>HSN/SAC</th>
+                              <th style={{ width: "8%", textAlign: "center" }}>Qty</th>
+                              <th style={{ width: "15%", textAlign: "right" }}>Unit Price</th>
+                              <th style={{ width: "15%", textAlign: "right" }}>Total (INR)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orderItems && orderItems.length > 0 ? (
+                              orderItems.map((item, idx) => (
+                                <tr key={item.id || idx}>
+                                  <td>{idx + 1}</td>
+                                  <td>
+                                    <strong className="invoice-item-title">{item.productName}</strong>
+                                  </td>
+                                  <td className="hsn-cell">8500{idx + 1}</td>
+                                  <td style={{ textAlign: "center" }}>{item.quantity}</td>
+                                  <td style={{ textAlign: "right" }}>
+                                    ₹{Number(item.price).toLocaleString("en-IN")}
+                                  </td>
+                                  <td style={{ textAlign: "right" }} className="line-total-cell">
+                                    ₹{Number(item.price * item.quantity).toLocaleString("en-IN")}
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td>1</td>
+                                <td>
+                                  <strong className="invoice-item-title">Enterprise Order Hardware Items</strong>
+                                </td>
+                                <td className="hsn-cell">8528</td>
+                                <td style={{ textAlign: "center" }}>1</td>
+                                <td style={{ textAlign: "right" }}>
+                                  ₹{Number(invoice.totalAmount).toLocaleString("en-IN")}
+                                </td>
+                                <td style={{ textAlign: "right" }} className="line-total-cell">
+                                  ₹{Number(invoice.totalAmount).toLocaleString("en-IN")}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
 
-                      <button
-                        className="print-invoice-btn"
-                        onClick={() => window.print()}
-                      >
-                        <PrinterIcon size={15} />
-                        <span>Print / Save Receipt</span>
-                      </button>
+                      {/* Financial Calculations & Declarations */}
+                      <div className="invoice-bottom-grid">
+                        <div className="invoice-terms-notes">
+                          <div className="words-amount-box">
+                            <span className="words-label">Invoice Amount in Words:</span>
+                            <strong className="words-val">
+                              {numberToWordsINR(invoice.totalAmount)}
+                            </strong>
+                          </div>
+
+                          <div className="terms-container">
+                            <span className="terms-title">Terms & Conditions:</span>
+                            <ol className="terms-list">
+                              <li>Goods once delivered are covered under a 12-month standard manufacturer warranty.</li>
+                              <li>7-day replacement guarantee against transit defects or hardware faults.</li>
+                              <li>Subject to Bengaluru jurisdiction. Errors & omissions excepted (E. & O.E.).</li>
+                            </ol>
+                          </div>
+                        </div>
+
+                        <div className="invoice-tax-summary-card">
+                          {(() => {
+                            const tot = Number(invoice.totalAmount) || 0;
+                            const taxable = Math.round((tot / 1.18) * 100) / 100;
+                            const tax = Math.round((tot - taxable) * 100) / 100;
+                            const halfTax = (tax / 2).toFixed(2);
+                            return (
+                              <>
+                                <div className="tax-summary-line">
+                                  <span>Taxable Subtotal:</span>
+                                  <span>₹{taxable.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                                </div>
+                                <div className="tax-summary-line">
+                                  <span>CGST (9.0%):</span>
+                                  <span>₹{halfTax}</span>
+                                </div>
+                                <div className="tax-summary-line">
+                                  <span>SGST (9.0%):</span>
+                                  <span>₹{halfTax}</span>
+                                </div>
+                                <div className="tax-summary-line">
+                                  <span>Express Courier Delivery:</span>
+                                  <span className="free-shipping-text">₹0.00 (FREE)</span>
+                                </div>
+                                <div className="invoice-total-highlight-row">
+                                  <span>Grand Total (INR):</span>
+                                  <span className="grand-total-val">₹{tot.toLocaleString("en-IN")}</span>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Signature & Seal Footer */}
+                      <div className="invoice-sign-footer">
+                        <div className="digital-verification-stamp">
+                          <ShieldCheckIcon size={20} className="shield-icon" />
+                          <div>
+                            <span className="verify-title">Digitally Certified Tax Invoice</span>
+                            <span className="verify-hash">Verification Hash: SHA256-INV-{invoice.invoiceId}-{invoice.orderId}</span>
+                            <span className="verify-note">This is an electronically generated tax invoice under CGST Act, 2017. Physical signature not required.</span>
+                          </div>
+                        </div>
+
+                        <div className="signatory-box">
+                          <div className="sign-stamp-badge">
+                            <span className="stamp-name">ShopEase Corp</span>
+                            <span className="stamp-sub">Official Digital Seal</span>
+                          </div>
+                          <span className="sign-designation">For ShopEase Corporation Pvt. Ltd.</span>
+                          <span className="sign-sub">Authorised Signatory</span>
+                        </div>
+                      </div>
+
+                      {/* Print Button (hidden during print) */}
+                      <div className="invoice-print-actions">
+                        <button
+                          type="button"
+                          className="print-invoice-btn"
+                          onClick={() => window.print()}
+                        >
+                          <PrinterIcon size={16} />
+                          <span>Print / Save Tax Invoice (PDF)</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

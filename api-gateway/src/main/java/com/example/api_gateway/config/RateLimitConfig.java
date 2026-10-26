@@ -15,7 +15,7 @@ import reactor.core.publisher.Mono;
 @Component
 public class RateLimitConfig implements GlobalFilter, Ordered {
 
-    private static final int MAX_REQUESTS = 10;
+    private static final int MAX_REQUESTS = 300;
     private static final long WINDOW_SECONDS = 60;
 
     private final ConcurrentHashMap<String, RequestCounter> counters =
@@ -25,6 +25,13 @@ public class RateLimitConfig implements GlobalFilter, Ordered {
     public Mono<Void> filter(
             ServerWebExchange exchange,
             org.springframework.cloud.gateway.filter.GatewayFilterChain chain) {
+
+        String path = exchange.getRequest().getURI().getPath();
+
+        // Exempt health checks and invoice generation from rate limits
+        if (path.equals("/actuator/health") || path.endsWith("/invoice")) {
+            return chain.filter(exchange);
+        }
 
         String clientIp = getClientIp(exchange);
 
@@ -47,8 +54,12 @@ public class RateLimitConfig implements GlobalFilter, Ordered {
 
                 exchange.getResponse()
                         .setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
+                exchange.getResponse().getHeaders().add("Content-Type", "application/json");
 
-                return exchange.getResponse().setComplete();
+                byte[] bytes = "{\"error\":\"Too many requests. Please wait a moment and try again.\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                org.springframework.core.io.buffer.DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
+
+                return exchange.getResponse().writeWith(Mono.just(buffer));
             }
         }
 

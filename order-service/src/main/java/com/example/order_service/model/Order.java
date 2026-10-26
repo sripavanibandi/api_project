@@ -29,6 +29,12 @@ public class Order {
     @PositiveOrZero(message = "Total price cannot be negative")
     private double totalPrice;
 
+    @jakarta.persistence.Column(length = 500)
+    private String deliveryAddress;
+
+    @jakarta.persistence.Column(length = 50)
+    private String deliveryPhone;
+
     public Order() {
     }
 
@@ -37,6 +43,15 @@ public class Order {
         this.customerEmail = customerEmail;
         this.status = status;
         this.totalPrice = totalPrice;
+    }
+
+    public Order(String customerName, String customerEmail, String status, double totalPrice, String deliveryAddress, String deliveryPhone) {
+        this.customerName = customerName;
+        this.customerEmail = customerEmail;
+        this.status = status;
+        this.totalPrice = totalPrice;
+        this.deliveryAddress = deliveryAddress;
+        this.deliveryPhone = deliveryPhone;
     }
 
     public Long getId() {
@@ -77,5 +92,21 @@ public class Order {
 
     public void setTotalPrice(double totalPrice) {
         this.totalPrice = totalPrice;
+    }
+
+    public String getDeliveryAddress() {
+        return deliveryAddress;
+    }
+
+    public void setDeliveryAddress(String deliveryAddress) {
+        this.deliveryAddress = deliveryAddress;
+    }
+
+    public String getDeliveryPhone() {
+        return deliveryPhone;
+    }
+
+    public void setDeliveryPhone(String deliveryPhone) {
+        this.deliveryPhone = deliveryPhone;
     }
 }

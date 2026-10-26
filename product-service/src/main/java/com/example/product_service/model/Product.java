@@ -26,6 +26,10 @@ public class Product {
     @Min(value = 0, message = "Quantity cannot be negative")
     private int quantity;
 
+    private String category;
+
+    private String imageUrl;
+
     public Product() {
     }
 
@@ -34,6 +38,15 @@ public class Product {
         this.description = description;
         this.price = price;
         this.quantity = quantity;
+    }
+
+    public Product(String name, String description, double price, int quantity, String category, String imageUrl) {
+        this.name = name;
+        this.description = description;
+        this.price = price;
+        this.quantity = quantity;
+        this.category = category;
+        this.imageUrl = imageUrl;
     }
 
     public Long getId() {
@@ -74,5 +87,21 @@ public class Product {
 
     public void setQuantity(int quantity) {
         this.quantity = quantity;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
     }
 }

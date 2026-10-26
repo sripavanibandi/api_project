@@ -18,8 +18,30 @@ async function request(url, options = {}) {
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Request failed");
+    const raw = await response.text();
+    let message = raw;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        message = parsed.error || parsed.message || raw;
+      }
+    } catch (_) {
+      // not JSON
+    }
+
+    if (!message || message.trim() === "") {
+      if (response.status === 429) {
+        message = "Too many requests. Please wait a moment and try again.";
+      } else if (response.status === 401) {
+        message = "Authentication required or session expired. Please log in again.";
+      } else if (response.status === 404) {
+        message = "Order or resource not found.";
+      } else {
+        message = `Request failed (HTTP ${response.status})`;
+      }
+    }
+
+    throw new Error(message);
   }
 
   return response.json();
@@ -29,14 +51,16 @@ export async function getProducts() {
   return request("/products");
 }
 
-export async function createOrder(customerName, customerEmail) {
+export async function createOrder(customerName, customerEmail, deliveryAddress = "", deliveryPhone = "") {
   return request("/orders", {
     method: "POST",
     body: JSON.stringify({
       customerName,
       customerEmail,
       status: "CONFIRMED",
-      totalPrice: 0
+      totalPrice: 0,
+      deliveryAddress,
+      deliveryPhone
     })
   });
 }

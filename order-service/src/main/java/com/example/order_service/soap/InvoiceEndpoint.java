@@ -24,15 +24,21 @@ public class InvoiceEndpoint {
 
     private Element createResponse(Element request) {
 
-        String orderId = request
-                .getElementsByTagName("orderId")
-                .item(0)
-                .getTextContent();
+        org.w3c.dom.NodeList orderIdNodes = request.getElementsByTagNameNS(NAMESPACE_URI, "orderId");
+        if (orderIdNodes.getLength() == 0) {
+            orderIdNodes = request.getElementsByTagName("orderId");
+        }
+        String orderId = (orderIdNodes.getLength() > 0 && orderIdNodes.item(0) != null)
+                ? orderIdNodes.item(0).getTextContent().trim()
+                : "UNKNOWN";
 
-        String totalAmount = request
-                .getElementsByTagName("totalAmount")
-                .item(0)
-                .getTextContent();
+        org.w3c.dom.NodeList totalAmountNodes = request.getElementsByTagNameNS(NAMESPACE_URI, "totalAmount");
+        if (totalAmountNodes.getLength() == 0) {
+            totalAmountNodes = request.getElementsByTagName("totalAmount");
+        }
+        String totalAmount = (totalAmountNodes.getLength() > 0 && totalAmountNodes.item(0) != null)
+                ? totalAmountNodes.item(0).getTextContent().trim()
+                : "0.0";
 
         try {
             javax.xml.parsers.DocumentBuilderFactory factory =
